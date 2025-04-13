@@ -34,10 +34,19 @@ const PhoneNumberChecklist: React.FC<PhoneNumberChecklistProps> = ({
     setCallSuccess(false);
     
     try {
+      const storedAccountSid = localStorage.getItem('TWILIO_ACCOUNT_SID');
+      const storedAuthToken = localStorage.getItem('TWILIO_AUTH_TOKEN');
+      
+      if (!storedAccountSid || !storedAuthToken) {
+        throw new Error("Twilio credentials not found. Please configure them in the checklist.");
+      }
+
       const response = await fetch("/api/twilio/call", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
+          "X-Twilio-Account-Sid": storedAccountSid,
+          "X-Twilio-Auth-Token": storedAuthToken
         },
         body: JSON.stringify({ phoneNumber: outboundNumber }),
       });
