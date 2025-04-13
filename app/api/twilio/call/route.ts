@@ -1,6 +1,13 @@
-import twilioClient from "@/lib/twilio";
+import { createTwilioClient } from "@/lib/twilio";
+import { headers } from 'next/headers';
 
 export async function POST(req: Request) {
+  const headersList = headers();
+  const accountSid = headersList.get('x-twilio-account-sid');
+  const authToken = headersList.get('x-twilio-auth-token');
+  
+  const twilioClient = createTwilioClient(accountSid || undefined, authToken || undefined);
+
   if (!twilioClient) {
     return Response.json(
       { error: "Twilio client not initialized" },
@@ -24,7 +31,7 @@ export async function POST(req: Request) {
     // If not, try to get it from the server
     if (!twimlUrl) {
       try {
-        const webhookResponse = await fetch("http://websocket-server-callsmatic.callsmatic.com/public-url");
+        const webhookResponse = await fetch("https://websocket-server-callsmatic.callsmatic.com/public-url");
         if (webhookResponse.ok) {
           const data = await webhookResponse.json();
           const publicUrl = data.publicUrl;

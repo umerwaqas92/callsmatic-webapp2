@@ -57,39 +57,42 @@ export default function ChecklistAndConfig({
 
     const pollChecks = async () => {
       try {
-        // 1. Check credentials
-        let res = await fetch("/api/twilio");
-        if (!res.ok) throw new Error("Failed credentials check");
-        const credData = await res.json();
-        setHasCredentials(!!credData?.credentialsSet);
+        // 1. Check credentials from localStorage
+        const storedAccountSid = localStorage.getItem('TWILIO_ACCOUNT_SID');
+        const storedAuthToken = localStorage.getItem('TWILIO_AUTH_TOKEN');
+        const hasStoredCredentials = !!(storedAccountSid && storedAuthToken);
+        setHasCredentials(hasStoredCredentials);
 
-        // If we have credentials, try to get the raw values (will be redacted for display)
-        if (credData?.credentialsSet) {
-          try {
-            const credsRes = await fetch("/api/twilio/credentials");
-            if (credsRes.ok) {
-              const { accountSid: sid, authToken: token } = await credsRes.json();
-              if (sid) setAccountSid(sid);
-              if (token) setAuthToken(token);
-            }
-          } catch (err) {
-            console.error("Error fetching credentials:", err);
-          }
+        // If we have stored credentials, use them
+        if (hasStoredCredentials) {
+          // Obfuscate credentials for display
+          const obfuscatedSid = `${storedAccountSid.substring(0, 4)}${'*'.repeat(Math.max(0, storedAccountSid.length - 8))}${storedAccountSid.substring(storedAccountSid.length - 4)}`;
+          const obfuscatedToken = `${storedAuthToken.substring(0, 4)}${'*'.repeat(Math.max(0, storedAuthToken.length - 8))}${storedAuthToken.substring(storedAuthToken.length - 4)}`;
+          
+          setAccountSid(obfuscatedSid);
+          setAuthToken(obfuscatedToken);
         }
 
-        // 2. Fetch numbers
-        res = await fetch("/api/twilio/numbers");
-        if (!res.ok) throw new Error("Failed to fetch phone numbers");
-        const numbersData = await res.json();
-        if (Array.isArray(numbersData) && numbersData.length > 0) {
-          setPhoneNumbers(numbersData);
-          // If currentNumberSid not set or not in the list, use first
-          const selected =
-            numbersData.find((p: PhoneNumber) => p.sid === currentNumberSid) ||
-            numbersData[0];
-          setCurrentNumberSid(selected.sid);
-          setCurrentVoiceUrl(selected.voiceUrl || "");
-          setSelectedPhoneNumber(selected.friendlyName || "");
+        // 2. Fetch numbers using stored credentials
+        if (hasStoredCredentials) {
+          const headers = {
+            'X-Twilio-Account-Sid': storedAccountSid,
+            'X-Twilio-Auth-Token': storedAuthToken
+          };
+          
+          const res = await fetch("/api/twilio/numbers", { headers });
+          if (!res.ok) throw new Error("Failed to fetch phone numbers");
+          const numbersData = await res.json();
+          if (Array.isArray(numbersData) && numbersData.length > 0) {
+            setPhoneNumbers(numbersData);
+            // If currentNumberSid not set or not in the list, use first
+            const selected =
+              numbersData.find((p: PhoneNumber) => p.sid === currentNumberSid) ||
+              numbersData[0];
+            setCurrentNumberSid(selected.sid);
+            setCurrentVoiceUrl(selected.voiceUrl || "");
+            setSelectedPhoneNumber(selected.friendlyName || "");
+          }
         }
 
         // 3. Check local server & public URL
@@ -218,6 +221,12 @@ export default function ChecklistAndConfig({
                     if (!accountSid || !authToken) return;
                     try {
                       setSavingCredentials(true);
+                      
+                      // Store credentials in localStorage
+                      localStorage.setItem('TWILIO_ACCOUNT_SID', accountSid);
+                      localStorage.setItem('TWILIO_AUTH_TOKEN', authToken);
+                      
+                      // Call API to validate credentials
                       const res = await fetch("/api/twilio/credentials", {
                         method: "POST",
                         headers: { "Content-Type": "application/json" },
@@ -226,11 +235,16 @@ export default function ChecklistAndConfig({
                           authToken,
                         }),
                       });
+                      
                       if (!res.ok) throw new Error("Failed to save credentials");
+                      
                       // Refresh the page to apply the new credentials
                       window.location.reload();
                     } catch (err) {
                       console.error(err);
+                      // Remove credentials from localStorage if validation failed
+                      localStorage.removeItem('TWILIO_ACCOUNT_SID');
+                      localStorage.removeItem('TWILIO_AUTH_TOKEN');
                     } finally {
                       setSavingCredentials(false);
                     }
